@@ -76,18 +76,37 @@ def main():
     )
 
     for region in regions:
-        response = client.models.list(
+        
+        # get the models
+        models_response = client.models.list(
+            location=region
+        )
+        model_list = list(models_response)
+        
+        if len(model_list) == 0:
+            # if no models in the region, just continue
+            # print(f"No models in {region}")
+            continue
+
+        # get the quota
+        quota_response = client.usages.list(
             location=region
         )
 
-        # count the number of items in the response iterator
-        model_list = list(response)
+        # build quota lookup
+        quota_lookup = dict()
+        for quota in quota_response:
+            if quota.name.value.startswith("OpenAI.Standard."):
+                quota_name = quota.name.value.replace("OpenAI.Standard.", "").lower()
+                quota_lookup[quota_name] = quota.limit
 
-        if len(model_list) > 0:
-            print(f"Models in {region}: {len(model_list)}")
-            for model in model_list:
-                m = model.model
-                print(f"   {m.name} {m.version}")
+        print(f"Models in {region}: {len(model_list)}")
+        for model in model_list:
+            m = model.model
+            quota = 0
+            if m.name in quota_lookup:
+                quota = quota_lookup[m.name]
+            print(f"   {m.name} {m.version} Quota: {quota:.0f}")
 
 if __name__ == "__main__":
     main()
