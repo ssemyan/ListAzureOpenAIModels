@@ -1,15 +1,16 @@
 # List Azure OpenAI Models
-Python script to list all the available OpenAI models in a subscription by region. It returns the name and version of each model.
+Python script to list all the available OpenAI models and associated quota in a subscription by region. It returns the name and version of each model along with the quota available.
 
 ## Sample Output
-    Models in northcentralus: 7
-        ada 1
-        babbage 1
-        curie 1
-        davinci 1
-        gpt-35-turbo 0613
-        gpt-35-turbo-16k 0613
-        text-embedding-ada-002 2
+    Models in northcentralus: 8
+        ada 1 Quota: 0
+        babbage 1 Quota: 0
+        curie 1 Quota: 0
+        davinci 1 Quota: 0
+        gpt-35-turbo 0613 Quota: 300
+        gpt-35-turbo-16k 0613 Quota: 300
+        text-embedding-ada-002 2 Quota: 350
+        whisper 001 Quota: 1
 
 ## Prerequisites
 `pip install -r requirements.txt`
