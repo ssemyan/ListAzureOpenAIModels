@@ -1,34 +1,7 @@
-# based on https://learn.microsoft.com/en-us/rest/api/cognitiveservices/accountmanagement/models/list?tabs=Python
 import os
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.cognitiveservices import CognitiveServicesManagementClient
-
-"""
-# PURPOSE
-    This sample demonstrates how to list all models available in a subscription by region. It returns the name and version of each model.
-# EXAMPLE OUTPUT
-    Models in northcentralus: 7
-        ada 1
-        babbage 1
-        curie 1
-        davinci 1
-        gpt-35-turbo 0613
-        gpt-35-turbo-16k 0613
-        text-embedding-ada-002 2
-# PREREQUISITES
-    pip install -r requirements.txt
-# USAGE
-    python list_models.py
-
-    This sample makes use of a service principal (AKA Application to access Azure. Before runing the sample, create (or reuse)
-    a service principal and ensure the principal has the 'Cognitive Services OpenAI User' role set at the subscription level.
-    Then set the values of the client ID, tenant ID, client secret, and subscription ID in the environment variables: AZURE_CLIENT_ID, 
-    AZURE_TENANT_ID, AZURE_CLIENT_SECRET, and AZURE_SUBSCRIPTION_ID. These can be set in the setenv.sh file and then run the command:
-    'source ./setenv.sh' to set the environment variables. 
-    
-    For more info about how to use service principals, please see:
-    https://docs.microsoft.com/azure/active-directory/develop/howto-create-service-principal-portal
-"""
+import re
 
 # create array of azure regions
 regions = [
@@ -65,6 +38,15 @@ regions = [
     "qatarcentral",
     "canadaeast" ]
 
+class Deployment:
+    def __init__(self, name, model, capacity, region, resource_group, resource):
+        self.name = name
+        self.model = model
+        self.capacity = capacity
+        self.region = region
+        self.resource_group = resource_group
+        self.resource = resource
+
 def main():
     sub_id = os.environ.get("AZURE_SUBSCRIPTION_ID")
     if not sub_id:
@@ -75,13 +57,36 @@ def main():
         subscription_id=sub_id
     )
 
+    # get all the deployments
+    deployments = []
+    # sample account ID '/subscriptions/abcd1234-1234-5678-9012-098330bfffff/resourceGroups/OpenAI/providers/Microsoft.CognitiveServices/accounts/myaccount'
+    # Regex pattern to extract resource group name
+    pattern = r'resourceGroups\/(.*?)\/providers'
+
+    accounts_response = client.accounts.list()
+    for account in accounts_response:
+        #print(account.name)
+        # get resource group from account
+        match = re.search(pattern, account.id)
+        resource_group_name = match.group(1)
+        deployments_response = client.deployments.list(
+            resource_group_name = resource_group_name,
+            account_name = account.name
+        )
+        for deployment in deployments_response:
+            deployments.append(Deployment(deployment.name, f"{deployment.properties.model.name}-{deployment.properties.model.version}", deployment.sku.capacity, account.location, resource_group_name, account.name))
+            #print(f"{deployment.name} - Model: {deployment.properties.model.name} Quota: {deployment.sku.capacity}")
+
     for region in regions:
         
         # get the models
         models_response = client.models.list(
             location=region
         )
-        model_list = list(models_response)
+        model_list = list()
+        for model in models_response:
+            if model.kind == "OpenAI":
+                model_list.append(model)
         
         if len(model_list) == 0:
             # if no models in the region, just continue
@@ -106,7 +111,17 @@ def main():
             quota = 0
             if m.name in quota_lookup:
                 quota = quota_lookup[m.name]
-            print(f"   {m.name} {m.version} Quota: {quota:.0f}")
+
+            # show any deployments
+            deployment_string = ""
+            quota_used = 0
+            for deployment in deployments:
+                if deployment.model == f"{m.name}-{m.version}" and deployment.region == region:
+                    quota_used = quota_used + deployment.capacity
+                    deployment_string = deployment_string + f"\n      Deployment: {deployment.name} Quota: {deployment.capacity} Resource Group: {deployment.resource_group} Resource: {deployment.resource}"
+
+            quota_left = quota - quota_used
+            print(f"   {m.name}-{m.version} Quota: {quota_left:.0f}/{quota:.0f}{deployment_string}")
 
 if __name__ == "__main__":
     main()
