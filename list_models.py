@@ -5,6 +5,7 @@ import re
 
 # create array of azure regions
 regions = [
+    "southindia",
     "australiaeast",
     "brazilsouth",
     "westus",
