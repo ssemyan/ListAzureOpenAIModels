@@ -2,6 +2,9 @@ import os
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.cognitiveservices import CognitiveServicesManagementClient
 import re
+import argparse
+import concurrent.futures
+
 
 # create array of azure regions
 regions = [
@@ -48,7 +51,48 @@ class Deployment:
         self.resource_group = resource_group
         self.resource = resource
 
-def main():
+def process_region(region, deployments, filter_string, client):
+    models_response = client.models.list(location=region)
+    model_list = [model for model in models_response if model.kind == "OpenAI"]
+    
+    results = []
+    
+    if not model_list:
+        return results
+
+    quota_response = client.usages.list(location=region)
+    quota_lookup = {quota.name.value.replace("OpenAI.Standard.", "").lower(): quota.limit 
+                    for quota in quota_response 
+                    if quota.name.value.startswith("OpenAI.Standard.")}
+    
+    results.append(f"Models in {region}: {len(model_list)}")
+    
+    quota_exists = False
+    for model in model_list:
+        m = model.model
+        if filter_string and filter_string not in m.name:
+            continue
+        quota = quota_lookup.get(m.name, 0)
+        if quota == 0:
+            continue
+        quota_exists = True
+        
+        deployment_string = ""
+        quota_used = 0
+        for deployment in deployments:
+            if deployment.model == f"{m.name}-{m.version}" and deployment.region == region:
+                quota_used += deployment.capacity
+                deployment_string += f"\n      Deployment: {deployment.name} Quota: {deployment.capacity} Resource Group: {deployment.resource_group} Resource: {deployment.resource}"
+
+        quota_left = quota - quota_used
+        results.append(f"   {m.name}-{m.version} Quota: {quota_left:.0f}/{quota:.0f}{deployment_string}")
+
+    if not quota_exists:
+        results.append("   No quota available for any models")
+    
+    return results
+
+def main(filter_string=None):
     sub_id = os.environ.get("AZURE_SUBSCRIPTION_ID")
     if not sub_id:
         raise Exception("AZURE_SUBSCRIPTION_ID is not set")
@@ -57,72 +101,34 @@ def main():
         credential=DefaultAzureCredential(),
         subscription_id=sub_id
     )
-
-    # get all the deployments
     deployments = []
-    # sample account ID '/subscriptions/abcd1234-1234-5678-9012-098330bfffff/resourceGroups/OpenAI/providers/Microsoft.CognitiveServices/accounts/myaccount'
-    # Regex pattern to extract resource group name
     pattern = r'resourceGroups\/(.*?)\/providers'
-
     accounts_response = client.accounts.list()
+
     for account in accounts_response:
-        #print(account.name)
-        # get resource group from account
         match = re.search(pattern, account.id)
         resource_group_name = match.group(1)
-        deployments_response = client.deployments.list(
-            resource_group_name = resource_group_name,
-            account_name = account.name
-        )
+        deployments_response = client.deployments.list(resource_group_name=resource_group_name, account_name=account.name)
         for deployment in deployments_response:
             deployments.append(Deployment(deployment.name, f"{deployment.properties.model.name}-{deployment.properties.model.version}", deployment.sku.capacity, account.location, resource_group_name, account.name))
-            #print(f"{deployment.name} - Model: {deployment.properties.model.name} Quota: {deployment.sku.capacity}")
-
-    for region in regions:
-        
-        # get the models
-        models_response = client.models.list(
-            location=region
-        )
-        model_list = list()
-        for model in models_response:
-            if model.kind == "OpenAI":
-                model_list.append(model)
-        
-        if len(model_list) == 0:
-            # if no models in the region, just continue
-            # print(f"No models in {region}")
-            continue
-
-        # get the quota
-        quota_response = client.usages.list(
-            location=region
-        )
-
-        # build quota lookup
-        quota_lookup = dict()
-        for quota in quota_response:
-            if quota.name.value.startswith("OpenAI.Standard."):
-                quota_name = quota.name.value.replace("OpenAI.Standard.", "").lower()
-                quota_lookup[quota_name] = quota.limit
-
-        print(f"Models in {region}: {len(model_list)}")
-        for model in model_list:
-            m = model.model
-            quota = 0
-            if m.name in quota_lookup:
-                quota = quota_lookup[m.name]
-
-            # show any deployments
-            deployment_string = ""
-            quota_used = 0
-            for deployment in deployments:
-                if deployment.model == f"{m.name}-{m.version}" and deployment.region == region:
-                    quota_used = quota_used + deployment.capacity
-                    deployment_string = deployment_string + f"\n      Deployment: {deployment.name} Quota: {deployment.capacity} Resource Group: {deployment.resource_group} Resource: {deployment.resource}"
-
-            quota_left = quota - quota_used
-            print(f"   {m.name}-{m.version} Quota: {quota_left:.0f}/{quota:.0f}{deployment_string}")
+    
+    # Create ThreadPoolExecutor for parallel execution
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future_to_region = {executor.submit(process_region, region, deployments, filter_string, client): region for region in regions}
+        for future in concurrent.futures.as_completed(future_to_region):
+            region = future_to_region[future]
+            try:
+                # Get result from future and print it
+                region_results = future.result()
+                for result in region_results:
+                    print(result)
+            except Exception as exc:
+                print(f'{region} generated an exception: {exc}')
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description='Process the filter parameter.')
+    parser.add_argument('--filter', type=str, help='Filter string to search in model names')
+    args = parser.parse_args()
+
+    # Call main()
+    main(filter_string=args.filter)
