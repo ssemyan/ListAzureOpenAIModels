@@ -37,7 +37,9 @@ regions = [
     "westus3",
     "jioindiawest",
     "qatarcentral",
-    "canadaeast" ]
+    "canadaeast",
+    "polandcentral",
+    "italynorth" ]
 
 class Deployment:
     def __init__(self, name, model, capacity, region, resource_group, resource):
