@@ -1,16 +1,24 @@
 # List Azure OpenAI Models
-Python script to list the available OpenAI quota in a subscription by region. It returns the name and quota available each model. For example, 70/240 means that 70K TPM out of 250K TPM have been allocated to deployments.
+Python script to list the available OpenAI quota in a subscription by region. It returns the name and quota used and total in thousand TPM for each region. 
 
 ## Sample Output
 ```
-    Quota usage in francecentral:
-        Model: gpt-35-turbo                        70/240
-        Model: gpt-4                               10/20
-        Model: gpt-4-turbo                         10/80
-        Model: gpt-4-32k                           0/60
-        Model: text-embedding-ada-002              0/240
-        Model: text-embedding-3-large              0/350
+Region               Model                          Quota Used (K)  Total Quota (K)
+australiaeast        Dalle                          0               2              
+australiaeast        gpt-35-turbo                   0               300            
+australiaeast        gpt-4                          0               40             
+australiaeast        gpt-4-turbo                    0               80             
+australiaeast        gpt-4-32k                      0               80             
+australiaeast        gptv                           0               30             
+australiaeast        text-embedding-ada-002         0               350            
+brazilsouth          text-embedding-ada-002         0               350            
+canadaeast           gpt-35-turbo                   5               300            
+canadaeast           gpt-4                          3               40   
 ```
+
+In the example above, in canadaeast region of th 40K TPM quota for GPT-4, 3K are currently being used by deployed models.
+
+The columns are fixed lengh so they can be easily imported into Excel or other tools.
 
 ## Prerequisites
 `pip install -r requirements.txt`

@@ -38,6 +38,7 @@ if not sub_id:
 # get the default credential based on the environment variables
 credential = DefaultAzureCredential()
 
+print(f"{'Region':<20} {'Model':<35} {'Quota Used (K)':<15} {'Total Quota (K)':<15}")
 for region in regions:
     # api URL is based on the subscription ID and region
     url = f"https://management.azure.com/subscriptions/{sub_id}/providers/Microsoft.CognitiveServices/locations/{region}/usages?api-version=2023-05-01"
@@ -52,11 +53,10 @@ for region in regions:
     model_list = json.loads(api_call_response.text)['value']
     #print(json.dumps(response_obj, indent=4))
     
-    print(f"Quota usage in {region.upper()}:")
+    #print(f"Quota usage in {region.upper()}:")
     for sku in model_list:
         model_name = sku['name']['value']
         
         # ignore the AccountCount, FineTuned, and ProvisionedManaged quota
         if "AccountCount" not in model_name and "ProvisionedManaged" not in model_name and "FineTuned" not in model_name and "finetune" not in model_name and "fine-tune" not in model_name:
-            print(f"   {model_name.replace('OpenAI.Standard.', ''):<30} {sku['currentValue']}/{sku['limit']}")
-    
+            print(f"{region:<20} {model_name.replace('OpenAI.Standard.', ''):<35} {sku['currentValue']:<15} {sku['limit']:<15}")
